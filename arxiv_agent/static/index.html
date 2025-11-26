@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>arxiv Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --bg-card: #15151f;
+            --bg-card-hover: #1c1c28;
+            --accent: #ff6b6b;
+            --accent-dim: #ff6b6b40;
+            --accent-secondary: #4ecdc4;
+            --accent-tertiary: #ffe66d;
+            --text-primary: #f0f0f5;
+            --text-secondary: #a0a0b0;
+            --text-dim: #606070;
+            --border: #2a2a38;
+            --success: #4ecdc4;
+            --warning: #ffe66d;
+            --danger: #ff6b6b;
+            --gradient-1: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+            --gradient-2: linear-gradient(135deg, #4ecdc4 0%, #44a08d 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            background-image: 
+                radial-gradient(ellipse at 20% 0%, rgba(255, 107, 107, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 100%, rgba(78, 205, 196, 0.06) 0%, transparent 50%);
+        }
+
+        /* Header */
+        .header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: rgba(10, 10, 15, 0.85);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--gradient-1);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .logo-text {
+            font-family: 'Instrument Serif', serif;
+            font-size: 1.5rem;
+            font-weight: 400;
+            letter-spacing: -0.02em;
+        }
+
+        .logo-text span {
+            color: var(--accent);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 0.75rem;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            border: none;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--gradient-1);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(255, 107, 107, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--accent);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+        }
+
+        .btn-ghost:hover {
+            color: var(--accent);
+        }
+
+        .btn-icon {
+            padding: 0.6rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .btn-icon:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Main Layout */
+        .main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 2rem;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .panel-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+        }
+
+        .panel-body {
+            padding: 1rem;
+        }
+
+        /* Anchors */
+        .anchor-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .anchor-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .anchor-item:hover {
+            border-color: var(--border);
+            background: var(--bg-tertiary);
+        }
+
+        .anchor-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            flex-shrink: 0;
+        }
+
+        .anchor-icon.topic {
+            background: var(--accent-dim);
+            color: var(--accent);
+        }
+
+        .anchor-icon.paper {
+            background: rgba(78, 205, 196, 0.2);
+            color: var(--accent-secondary);
+        }
+
+        .anchor-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .anchor-title {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .anchor-meta {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+        }
+
+        .anchor-delete {
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            cursor: pointer;
+            color: var(--text-dim);
+        }
+
+        .anchor-item:hover .anchor-delete {
+            opacity: 1;
+        }
+
+        .anchor-delete:hover {
+            color: var(--danger);
+        }
+
+        /* Add Topic Form */
+        .add-topic-form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            transition: all 0.2s ease;
+        }
+
+        .input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+
+        .input::placeholder {
+            color: var(--text-dim);
+        }
+
+        textarea.input {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 2rem 1rem;
+            color: var(--text-dim);
+        }
+
+        .empty-state-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+            opacity: 0.5;
+        }
+
+        /* Content Area */
+        .content {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .content-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .content-title {
+            font-family: 'Instrument Serif', serif;
+            font-size: 1.75rem;
+            font-weight: 400;
+        }
+
+        .content-meta {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Papers Grid */
+        .papers-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .paper-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .paper-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-1);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .paper-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .paper-card:hover::before {
+            opacity: 1;
+        }
+
+        .paper-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .paper-score {
+            flex-shrink: 0;
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .paper-score.high {
+            background: rgba(78, 205, 196, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(78, 205, 196, 0.3);
+        }
+
+        .paper-score.medium {
+            background: rgba(255, 230, 109, 0.15);
+            color: var(--warning);
+            border: 1px solid rgba(255, 230, 109, 0.3);
+        }
+
+        .paper-score.low {
+            background: rgba(255, 107, 107, 0.1);
+            color: var(--text-dim);
+            border: 1px solid var(--border);
+        }
+
+        .paper-title-section {
+            flex: 1;
+        }
+
+        .paper-title {
+            font-size: 1.1rem;
+            font-weight: 500;
+            line-height: 1.4;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .paper-title a {
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .paper-title a:hover {
+            color: var(--accent);
+        }
+
+        .paper-authors {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .paper-abstract {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .paper-abstract.expanded {
+            -webkit-line-clamp: unset;
+        }
+
+        .paper-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .paper-categories {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .category-tag {
+            padding: 0.25rem 0.6rem;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-dim);
+        }
+
+        .paper-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .paper-action {
+            padding: 0.4rem 0.75rem;
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .paper-action:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .paper-action.saved {
+            background: rgba(78, 205, 196, 0.15);
+            color: var(--success);
+            border-color: rgba(78, 205, 196, 0.3);
+        }
+
+        /* Loading State */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 4rem 2rem;
+            color: var(--text-dim);
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Settings Panel */
+        .settings-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .settings-row:last-child {
+            border-bottom: none;
+        }
+
+        .settings-label {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .settings-value {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .input-small {
+            width: 80px;
+            padding: 0.4rem 0.6rem;
+            text-align: center;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Categories */
+        .category-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            max-height: 280px;
+            overflow-y: auto;
+        }
+
+        .category-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.6rem;
+            background: var(--bg-secondary);
+            border: 1px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.8rem;
+        }
+
+        .category-checkbox:hover {
+            border-color: var(--border);
+            background: var(--bg-tertiary);
+        }
+
+        .category-checkbox.selected {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .category-checkbox input {
+            display: none;
+        }
+
+        .category-checkbox .checkmark {
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.2s ease;
+        }
+
+        .category-checkbox.selected .checkmark {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .category-checkbox.selected .checkmark::after {
+            content: '✓';
+            color: white;
+            font-size: 0.7rem;
+        }
+
+        .category-checkbox .cat-label {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: var(--text-secondary);
+        }
+
+        .category-checkbox.selected .cat-label {
+            color: var(--text-primary);
+        }
+
+        /* Date Filter */
+        .date-filter {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .date-input {
+            flex: 1;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }
+
+        .date-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .date-input::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+
+        .btn-clear-date {
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-dim);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-clear-date:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                order: 2;
+            }
+            
+            .content {
+                order: 1;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-dim);
+        }
+
+        /* Toast Notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .toast {
+            padding: 1rem 1.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+            animation: slideIn 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .toast.success {
+            border-color: var(--success);
+        }
+
+        .toast.error {
+            border-color: var(--danger);
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <div class="logo-icon">📡</div>
+                <div class="logo-text">arxiv <span>Agent</span></div>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-primary" onclick="fetchPapers()">
+                    <span>🔄</span> Fetch Papers
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <aside class="sidebar">
+            <!-- Add Topic Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Add Interest</span>
+                </div>
+                <div class="panel-body">
+                    <form class="add-topic-form" onsubmit="addTopic(event)">
+                        <input type="text" class="input" id="topic-title" placeholder="Short title (optional)">
+                        <textarea class="input" id="topic-text" placeholder="Describe your research interest... e.g., 'Large language model alignment techniques including RLHF and constitutional AI'" required></textarea>
+                        <button type="submit" class="btn btn-primary" style="width: 100%;">
+                            <span>➕</span> Add Topic
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Anchors Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Your Interests</span>
+                    <span id="anchor-count" class="panel-title" style="color: var(--accent);">0</span>
+                </div>
+                <div class="panel-body">
+                    <div id="anchor-list" class="anchor-list">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📌</div>
+                            <div>No interests yet. Add topics or save papers!</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Categories Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Categories</span>
+                    <span id="cat-count" class="panel-title" style="color: var(--accent);">0</span>
+                </div>
+                <div class="panel-body">
+                    <div id="category-grid" class="category-grid">
+                        <!-- Categories loaded dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Date Filter Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Date Filter</span>
+                </div>
+                <div class="panel-body">
+                    <div class="date-filter">
+                        <input type="date" class="date-input" id="date-filter" title="Filter papers by date">
+                        <button class="btn-clear-date" onclick="clearDateFilter()" title="Clear date filter">✕</button>
+                    </div>
+                    <div style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-dim);">
+                        Leave empty for all recent papers
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Settings</span>
+                </div>
+                <div class="panel-body">
+                    <div class="settings-row">
+                        <span class="settings-label">Relevance Threshold</span>
+                        <div class="settings-value">
+                            <input type="number" class="input input-small" id="threshold" value="0.35" min="0" max="1" step="0.05" onchange="updateSettings()">
+                        </div>
+                    </div>
+                    <div class="settings-row">
+                        <span class="settings-label">Max Results</span>
+                        <div class="settings-value">
+                            <input type="number" class="input input-small" id="max-results" value="20" min="1" max="100" onchange="updateSettings()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <section class="content">
+            <div class="content-header">
+                <h1 class="content-title">Today's Papers</h1>
+                <span id="papers-meta" class="content-meta"></span>
+            </div>
+            <div id="papers-container" class="papers-grid">
+                <div class="empty-state" style="padding: 4rem 2rem;">
+                    <div class="empty-state-icon">📚</div>
+                    <div>Click "Fetch Papers" to discover relevant research</div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <div id="toast-container" class="toast-container"></div>
+
+    <script>
+        // State
+        let papers = [];
+        let anchors = [];
+        let categories = [];
+        let selectedCategories = new Set();
+        let savedPaperIds = new Set();
+
+        // API calls
+        async function fetchAnchors() {
+            try {
+                const response = await fetch('/api/anchors');
+                anchors = await response.json();
+                savedPaperIds = new Set(anchors.filter(a => a.type === 'paper').map(a => a.id));
+                renderAnchors();
+            } catch (error) {
+                showToast('Failed to load anchors', 'error');
+            }
+        }
+
+        async function fetchCategories() {
+            try {
+                const response = await fetch('/api/categories');
+                categories = await response.json();
+                selectedCategories = new Set(categories.filter(c => c.selected).map(c => c.id));
+                renderCategories();
+            } catch (error) {
+                console.error('Failed to load categories');
+            }
+        }
+
+        async function fetchPapers() {
+            const container = document.getElementById('papers-container');
+            container.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <div>Fetching and analyzing papers...</div>
+                </div>
+            `;
+
+            try {
+                const threshold = document.getElementById('threshold').value;
+                const maxResults = document.getElementById('max-results').value;
+                const dateFilter = document.getElementById('date-filter').value;
+                const cats = Array.from(selectedCategories).join(',');
+                
+                let url = `/api/papers?threshold=${threshold}&max_results=${maxResults}`;
+                if (cats) url += `&categories=${encodeURIComponent(cats)}`;
+                if (dateFilter) url += `&date_filter=${dateFilter}`;
+                
+                const response = await fetch(url);
+                papers = await response.json();
+                renderPapers();
+                
+                const dateStr = dateFilter ? ` for ${dateFilter}` : '';
+                showToast(`Found ${papers.length} relevant papers${dateStr}`, 'success');
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="empty-state" style="padding: 4rem 2rem;">
+                        <div class="empty-state-icon">❌</div>
+                        <div>Failed to fetch papers. Please try again.</div>
+                    </div>
+                `;
+                showToast('Failed to fetch papers', 'error');
+            }
+        }
+
+        async function addTopic(event) {
+            event.preventDefault();
+            
+            const titleInput = document.getElementById('topic-title');
+            const textInput = document.getElementById('topic-text');
+            
+            try {
+                const response = await fetch('/api/anchors/topic', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: titleInput.value || null,
+                        text: textInput.value
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Failed to add topic');
+                
+                titleInput.value = '';
+                textInput.value = '';
+                
+                await fetchAnchors();
+                showToast('Topic added successfully', 'success');
+            } catch (error) {
+                showToast('Failed to add topic', 'error');
+            }
+        }
+
+        async function savePaper(paperId) {
+            try {
+                const response = await fetch(`/api/anchors/paper/${paperId}`, {
+                    method: 'POST'
+                });
+                
+                if (!response.ok) throw new Error('Failed to save paper');
+                
+                await fetchAnchors();
+                renderPapers(); // Re-render to update saved state
+                showToast('Paper saved to interests', 'success');
+            } catch (error) {
+                showToast('Failed to save paper', 'error');
+            }
+        }
+
+        async function removeAnchor(anchorId) {
+            try {
+                const response = await fetch(`/api/anchors/${anchorId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) throw new Error('Failed to remove');
+                
+                await fetchAnchors();
+                renderPapers(); // Re-render to update saved state
+                showToast('Removed from interests', 'success');
+            } catch (error) {
+                showToast('Failed to remove', 'error');
+            }
+        }
+
+        async function updateSettings() {
+            try {
+                const threshold = parseFloat(document.getElementById('threshold').value);
+                const maxResults = parseInt(document.getElementById('max-results').value);
+                
+                await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        threshold, 
+                        max_results: maxResults,
+                        categories: Array.from(selectedCategories)
+                    })
+                });
+            } catch (error) {
+                console.error('Failed to update settings');
+            }
+        }
+
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const settings = await response.json();
+                
+                document.getElementById('threshold').value = settings.threshold;
+                document.getElementById('max-results').value = settings.max_results;
+                
+                // Set today's date as default
+                const today = new Date().toISOString().split('T')[0];
+                document.getElementById('date-filter').value = today;
+            } catch (error) {
+                console.error('Failed to load settings');
+            }
+        }
+
+        function toggleCategory(catId) {
+            if (selectedCategories.has(catId)) {
+                selectedCategories.delete(catId);
+            } else {
+                selectedCategories.add(catId);
+            }
+            renderCategories();
+            updateSettings();
+        }
+
+        function clearDateFilter() {
+            document.getElementById('date-filter').value = '';
+        }
+
+        // Rendering
+        function renderCategories() {
+            const container = document.getElementById('category-grid');
+            const countEl = document.getElementById('cat-count');
+            
+            countEl.textContent = selectedCategories.size;
+            
+            container.innerHTML = categories.map(cat => {
+                const isSelected = selectedCategories.has(cat.id);
+                return `
+                    <label class="category-checkbox ${isSelected ? 'selected' : ''}" onclick="toggleCategory('${cat.id}')">
+                        <span class="checkmark"></span>
+                        <span class="cat-label" title="${cat.name}">${cat.id}</span>
+                    </label>
+                `;
+            }).join('');
+        }
+
+        function renderAnchors() {
+            const container = document.getElementById('anchor-list');
+            const countEl = document.getElementById('anchor-count');
+            
+            countEl.textContent = anchors.length;
+            
+            if (anchors.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📌</div>
+                        <div>No interests yet. Add topics or save papers!</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = anchors.map(anchor => `
+                <div class="anchor-item">
+                    <div class="anchor-icon ${anchor.type}">${anchor.type === 'topic' ? '💡' : '📄'}</div>
+                    <div class="anchor-content">
+                        <div class="anchor-title">${escapeHtml(anchor.title)}</div>
+                        <div class="anchor-meta">${anchor.type} • ${new Date(anchor.added_at).toLocaleDateString()}</div>
+                    </div>
+                    <div class="anchor-delete" onclick="removeAnchor('${anchor.id}')" title="Remove">✕</div>
+                </div>
+            `).join('');
+        }
+
+        function renderPapers() {
+            const container = document.getElementById('papers-container');
+            const metaEl = document.getElementById('papers-meta');
+            
+            metaEl.textContent = `${papers.length} papers`;
+            
+            if (papers.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state" style="padding: 4rem 2rem;">
+                        <div class="empty-state-icon">🔍</div>
+                        <div>No papers matched your interests. Try adding more topics or lowering the threshold.</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = papers.map(paper => {
+                const scorePercent = Math.round(paper.relevance_score * 100);
+                const scoreClass = scorePercent >= 60 ? 'high' : scorePercent >= 45 ? 'medium' : 'low';
+                const isSaved = savedPaperIds.has(paper.id);
+                const authors = paper.authors.slice(0, 3).join(', ') + (paper.authors.length > 3 ? ` +${paper.authors.length - 3}` : '');
+                
+                return `
+                    <article class="paper-card">
+                        <div class="paper-header">
+                            <div class="paper-score ${scoreClass}">${scorePercent}%</div>
+                            <div class="paper-title-section">
+                                <h2 class="paper-title">
+                                    <a href="${paper.link}" target="_blank" rel="noopener">${escapeHtml(paper.title)}</a>
+                                </h2>
+                                <div class="paper-authors">${escapeHtml(authors)}</div>
+                            </div>
+                        </div>
+                        <p class="paper-abstract" onclick="this.classList.toggle('expanded')">${escapeHtml(paper.abstract)}</p>
+                        <div class="paper-footer">
+                            <div class="paper-categories">
+                                ${paper.categories.slice(0, 3).map(cat => `<span class="category-tag">${escapeHtml(cat)}</span>`).join('')}
+                            </div>
+                            <div class="paper-actions">
+                                <a href="${paper.pdf_link}" target="_blank" class="paper-action" title="View PDF">📄 PDF</a>
+                                <button class="paper-action ${isSaved ? 'saved' : ''}" onclick="${isSaved ? `removeAnchor('${paper.id}')` : `savePaper('${paper.id}')`}" title="${isSaved ? 'Remove from interests' : 'Save to interests'}">
+                                    ${isSaved ? '✓ Saved' : '📌 Save'}
+                                </button>
+                            </div>
+                        </div>
+                    </article>
+                `;
+            }).join('');
+        }
+
+        // Utilities
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `
+                <span>${type === 'success' ? '✓' : '✕'}</span>
+                <span>${message}</span>
+            `;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(100%)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSettings();
+            fetchAnchors();
+            fetchCategories();
+        });
+    </script>
+</body>
+</html>
+
