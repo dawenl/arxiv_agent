@@ -1,7 +1,6 @@
 """Web interface for the arxiv agent."""
 
 import os
-from datetime import datetime, date
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -12,7 +11,7 @@ from pydantic import BaseModel
 from .anchors import AnchorStore
 from .feed import fetch_all_feeds
 from .matcher import SemanticMatcher
-from .models import ARXIV_CATEGORIES, Config, Paper
+from .models import ARXIV_CATEGORIES, EMBEDDING_MODELS, Config, Paper
 
 # Initialize app
 app = FastAPI(title="arxiv Agent", description="Your personal research paper curator")
@@ -77,13 +76,25 @@ class FetchParams(BaseModel):
     max_results: int | None = None
 
 
+class PapersResult(BaseModel):
+    papers: list[PaperResponse]
+    total_in_feed: int  # Total papers fetched from RSS before filtering
+
+
 class SettingsUpdate(BaseModel):
     threshold: float | None = None
     max_results: int | None = None
     categories: list[str] | None = None
+    embedding_model: str | None = None
 
 
 class CategoryInfo(BaseModel):
+    id: str
+    name: str
+    selected: bool
+
+
+class EmbeddingModelInfo(BaseModel):
     id: str
     name: str
     selected: bool
@@ -161,8 +172,7 @@ async def fetch_papers(
     threshold: float | None = None,
     max_results: int | None = None,
     categories: str | None = None,  # Comma-separated list
-    date_filter: str | None = None,  # ISO date string (YYYY-MM-DD)
-) -> list[PaperResponse]:
+) -> PapersResult:
     """Fetch and filter papers from arxiv feeds."""
     global _cached_papers
     
@@ -179,17 +189,7 @@ async def fetch_papers(
     
     # Fetch all papers
     all_papers = fetch_all_feeds(feeds)
-    
-    # Filter by date if provided
-    if date_filter:
-        try:
-            filter_date = datetime.fromisoformat(date_filter).date()
-            all_papers = [
-                p for p in all_papers 
-                if p.updated.date() == filter_date or p.published.date() == filter_date
-            ]
-        except ValueError:
-            pass  # Invalid date, skip filtering
+    total_in_feed = len(all_papers)
     
     # Filter by relevance if we have anchors
     anchors = store.anchors
@@ -206,21 +206,24 @@ async def fetch_papers(
     
     _cached_papers = filtered
     
-    return [
-        PaperResponse(
-            id=p.id,
-            title=p.title,
-            abstract=p.abstract,
-            authors=p.authors,
-            categories=p.categories,
-            published=p.published.isoformat(),
-            updated=p.updated.isoformat(),
-            link=p.link,
-            pdf_link=p.pdf_link,
-            relevance_score=p.relevance_score,
-        )
-        for p in filtered
-    ]
+    return PapersResult(
+        papers=[
+            PaperResponse(
+                id=p.id,
+                title=p.title,
+                abstract=p.abstract,
+                authors=p.authors,
+                categories=p.categories,
+                published=p.published.isoformat(),
+                updated=p.updated.isoformat(),
+                link=p.link,
+                pdf_link=p.pdf_link,
+                relevance_score=p.relevance_score,
+            )
+            for p in filtered
+        ],
+        total_in_feed=total_in_feed,
+    )
 
 
 @app.get("/api/categories")
@@ -237,6 +240,20 @@ async def list_categories() -> list[CategoryInfo]:
     ]
 
 
+@app.get("/api/embedding-models")
+async def list_embedding_models() -> list[EmbeddingModelInfo]:
+    """List all available embedding models."""
+    config = get_config()
+    return [
+        EmbeddingModelInfo(
+            id=model_id,
+            name=model_name,
+            selected=model_id == config.embedding_model,
+        )
+        for model_id, model_name in EMBEDDING_MODELS.items()
+    ]
+
+
 @app.get("/api/settings")
 async def get_settings():
     """Get current settings."""
@@ -245,19 +262,30 @@ async def get_settings():
         "threshold": config.relevance_threshold,
         "max_results": config.max_results,
         "categories": config.categories,
+        "embedding_model": config.embedding_model,
     }
 
 
 @app.put("/api/settings")
 async def update_settings(settings: SettingsUpdate):
     """Update settings."""
+    global _matcher
     config = get_config()
+    
     if settings.threshold is not None:
         config.relevance_threshold = settings.threshold
     if settings.max_results is not None:
         config.max_results = settings.max_results
     if settings.categories is not None:
         config.categories = settings.categories
+    if settings.embedding_model is not None and settings.embedding_model != config.embedding_model:
+        # Validate the model
+        if settings.embedding_model not in EMBEDDING_MODELS:
+            raise HTTPException(status_code=400, detail=f"Invalid embedding model: {settings.embedding_model}")
+        config.embedding_model = settings.embedding_model
+        # Reset matcher to force model reload
+        _matcher = None
+    
     return {"status": "ok"}
 
 

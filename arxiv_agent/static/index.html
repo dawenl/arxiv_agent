@@ -576,6 +576,50 @@
             font-family: 'JetBrains Mono', monospace;
         }
 
+        .select {
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 180px;
+        }
+
+        .select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+
+        .select option {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .settings-row.full-width {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.5rem;
+        }
+
+        .settings-row.full-width .settings-value {
+            width: 100%;
+        }
+
+        .settings-row.full-width .select {
+            width: 100%;
+        }
+
+        .model-description {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+        }
+
         /* Categories */
         .category-grid {
             display: grid;
@@ -644,49 +688,6 @@
 
         .category-checkbox.selected .cat-label {
             color: var(--text-primary);
-        }
-
-        /* Date Filter */
-        .date-filter {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
-
-        .date-input {
-            flex: 1;
-            padding: 0.5rem 0.75rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-primary);
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-        }
-
-        .date-input:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-
-        .date-input::-webkit-calendar-picker-indicator {
-            filter: invert(1);
-            cursor: pointer;
-        }
-
-        .btn-clear-date {
-            padding: 0.5rem 0.75rem;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            color: var(--text-dim);
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .btn-clear-date:hover {
-            border-color: var(--accent);
-            color: var(--accent);
         }
 
         /* Responsive */
@@ -827,22 +828,6 @@
                 </div>
             </div>
 
-            <!-- Date Filter Panel -->
-            <div class="panel">
-                <div class="panel-header">
-                    <span class="panel-title">Date Filter</span>
-                </div>
-                <div class="panel-body">
-                    <div class="date-filter">
-                        <input type="date" class="date-input" id="date-filter" title="Filter papers by date">
-                        <button class="btn-clear-date" onclick="clearDateFilter()" title="Clear date filter">✕</button>
-                    </div>
-                    <div style="margin-top: 0.5rem; font-size: 0.75rem; color: var(--text-dim);">
-                        Leave empty for all recent papers
-                    </div>
-                </div>
-            </div>
-
             <!-- Settings Panel -->
             <div class="panel">
                 <div class="panel-header">
@@ -858,8 +843,17 @@
                     <div class="settings-row">
                         <span class="settings-label">Max Results</span>
                         <div class="settings-value">
-                            <input type="number" class="input input-small" id="max-results" value="20" min="1" max="100" onchange="updateSettings()">
+                            <input type="number" class="input input-small" id="max-results" value="50" min="1" max="200" onchange="updateSettings()">
                         </div>
+                    </div>
+                    <div class="settings-row full-width">
+                        <span class="settings-label">Embedding Model</span>
+                        <div class="settings-value">
+                            <select class="select" id="embedding-model" onchange="updateSettings()">
+                                <!-- Options loaded dynamically -->
+                            </select>
+                        </div>
+                        <div id="model-description" class="model-description"></div>
                     </div>
                 </div>
             </div>
@@ -884,10 +878,13 @@
     <script>
         // State
         let papers = [];
+        let totalInFeed = 0;
         let anchors = [];
         let categories = [];
+        let embeddingModels = [];
         let selectedCategories = new Set();
         let savedPaperIds = new Set();
+        let currentEmbeddingModel = 'all-MiniLM-L6-v2';
 
         // API calls
         async function fetchAnchors() {
@@ -912,6 +909,20 @@
             }
         }
 
+        async function fetchEmbeddingModels() {
+            try {
+                const response = await fetch('/api/embedding-models');
+                embeddingModels = await response.json();
+                const selected = embeddingModels.find(m => m.selected);
+                if (selected) {
+                    currentEmbeddingModel = selected.id;
+                }
+                renderEmbeddingModels();
+            } catch (error) {
+                console.error('Failed to load embedding models');
+            }
+        }
+
         async function fetchPapers() {
             const container = document.getElementById('papers-container');
             container.innerHTML = `
@@ -924,19 +935,22 @@
             try {
                 const threshold = document.getElementById('threshold').value;
                 const maxResults = document.getElementById('max-results').value;
-                const dateFilter = document.getElementById('date-filter').value;
                 const cats = Array.from(selectedCategories).join(',');
                 
                 let url = `/api/papers?threshold=${threshold}&max_results=${maxResults}`;
                 if (cats) url += `&categories=${encodeURIComponent(cats)}`;
-                if (dateFilter) url += `&date_filter=${dateFilter}`;
                 
                 const response = await fetch(url);
-                papers = await response.json();
+                const result = await response.json();
+                papers = result.papers;
+                totalInFeed = result.total_in_feed;
                 renderPapers();
                 
-                const dateStr = dateFilter ? ` for ${dateFilter}` : '';
-                showToast(`Found ${papers.length} relevant papers${dateStr}`, 'success');
+                if (totalInFeed === 0) {
+                    showToast('No papers in today\'s feed (weekend/holiday?)', 'success');
+                } else {
+                    showToast(`Found ${papers.length} relevant papers (${totalInFeed} in feed)`, 'success');
+                }
             } catch (error) {
                 container.innerHTML = `
                     <div class="empty-state" style="padding: 4rem 2rem;">
@@ -1012,6 +1026,9 @@
             try {
                 const threshold = parseFloat(document.getElementById('threshold').value);
                 const maxResults = parseInt(document.getElementById('max-results').value);
+                const embeddingModel = document.getElementById('embedding-model').value;
+                
+                const modelChanged = embeddingModel !== currentEmbeddingModel;
                 
                 await fetch('/api/settings', {
                     method: 'PUT',
@@ -1019,11 +1036,22 @@
                     body: JSON.stringify({ 
                         threshold, 
                         max_results: maxResults,
-                        categories: Array.from(selectedCategories)
+                        categories: Array.from(selectedCategories),
+                        embedding_model: embeddingModel
                     })
                 });
+                
+                if (modelChanged) {
+                    currentEmbeddingModel = embeddingModel;
+                    const currentModel = embeddingModels.find(m => m.id === currentEmbeddingModel);
+                    if (currentModel) {
+                        document.getElementById('model-description').textContent = currentModel.name;
+                    }
+                    showToast(`Switched to ${embeddingModel}. Model will load on next fetch.`, 'success');
+                }
             } catch (error) {
                 console.error('Failed to update settings');
+                showToast('Failed to update settings', 'error');
             }
         }
 
@@ -1035,9 +1063,9 @@
                 document.getElementById('threshold').value = settings.threshold;
                 document.getElementById('max-results').value = settings.max_results;
                 
-                // Set today's date as default
-                const today = new Date().toISOString().split('T')[0];
-                document.getElementById('date-filter').value = today;
+                if (settings.embedding_model) {
+                    currentEmbeddingModel = settings.embedding_model;
+                }
             } catch (error) {
                 console.error('Failed to load settings');
             }
@@ -1053,11 +1081,21 @@
             updateSettings();
         }
 
-        function clearDateFilter() {
-            document.getElementById('date-filter').value = '';
+        // Rendering
+        function renderEmbeddingModels() {
+            const select = document.getElementById('embedding-model');
+            const descEl = document.getElementById('model-description');
+            
+            select.innerHTML = embeddingModels.map(model => 
+                `<option value="${model.id}" ${model.id === currentEmbeddingModel ? 'selected' : ''}>${model.id}</option>`
+            ).join('');
+            
+            const currentModel = embeddingModels.find(m => m.id === currentEmbeddingModel);
+            if (currentModel) {
+                descEl.textContent = currentModel.name;
+            }
         }
 
-        // Rendering
         function renderCategories() {
             const container = document.getElementById('category-grid');
             const countEl = document.getElementById('cat-count');
@@ -1110,12 +1148,28 @@
             metaEl.textContent = `${papers.length} papers`;
             
             if (papers.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state" style="padding: 4rem 2rem;">
-                        <div class="empty-state-icon">🔍</div>
-                        <div>No papers matched your interests. Try adding more topics or lowering the threshold.</div>
-                    </div>
-                `;
+                // Differentiate between empty feed vs no matches
+                if (totalInFeed === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state" style="padding: 4rem 2rem;">
+                            <div class="empty-state-icon">📭</div>
+                            <div>No papers in today's feed.</div>
+                            <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim);">
+                                This is normal on weekends and holidays when arxiv doesn't publish new papers.
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state" style="padding: 4rem 2rem;">
+                            <div class="empty-state-icon">🔍</div>
+                            <div>No papers matched your interests.</div>
+                            <div style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--text-dim);">
+                                ${totalInFeed} papers in feed. Try adding more topics or lowering the threshold.
+                            </div>
+                        </div>
+                    `;
+                }
                 return;
             }
             
@@ -1182,6 +1236,7 @@
             loadSettings();
             fetchAnchors();
             fetchCategories();
+            fetchEmbeddingModels();
         });
     </script>
 </body>

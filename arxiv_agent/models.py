@@ -79,6 +79,17 @@ class Anchor:
         )
 
 
+# Available sentence embedding models with descriptions
+EMBEDDING_MODELS: dict[str, str] = {
+    "all-MiniLM-L6-v2": "Fast & lightweight (default)",
+    "all-MiniLM-L12-v2": "Better quality, slightly slower",
+    "all-mpnet-base-v2": "Best quality, slower",
+    "multi-qa-MiniLM-L6-cos-v1": "Optimized for search/QA",
+    "paraphrase-MiniLM-L6-v2": "Good for paraphrasing",
+    "all-distilroberta-v1": "DistilRoBERTa based",
+}
+
+
 # Available arxiv categories with descriptions
 ARXIV_CATEGORIES: dict[str, str] = {
     # Computer Science
@@ -119,7 +130,7 @@ class Config:
     data_dir: str = "~/.arxiv_agent"
     embedding_model: str = "all-MiniLM-L6-v2"
     relevance_threshold: float = 0.35
-    max_results: int = 20
+    max_results: int = 50
     
     # Default categories to monitor
     categories: list[str] = field(default_factory=lambda: [
