@@ -16,7 +16,9 @@ class SemanticMatcher:
     def __init__(self, config: Config):
         self.config = config
         self.data_dir = Path(os.path.expanduser(config.data_dir))
-        self.cache_file = self.data_dir / "embeddings_cache.json"
+        # Use model-specific cache file to avoid dimension mismatches
+        model_name = config.embedding_model.replace("/", "_").replace("\\", "_")
+        self.cache_file = self.data_dir / f"embeddings_cache_{model_name}.json"
         self._model: SentenceTransformer | None = None
         self._embedding_cache: dict[str, list[float]] = {}
         self._load_cache()

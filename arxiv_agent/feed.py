@@ -48,11 +48,25 @@ def clean_abstract(summary: str) -> str:
     return text
 
 
+def is_new_or_cross(entry: dict) -> bool:
+    """
+    Check if paper is a new submission or cross-listing (not a replacement).
+
+    arXiv RSS feeds include an 'arxiv_announce_type' field:
+    - 'new' - New submission
+    - 'cross' - Cross-listed from another category
+    - 'replace' - Replacement/update of existing paper
+    - 'replace-cross' - Replacement that's cross-listed
+    """
+    announce_type = entry.get("arxiv_announce_type", "new").lower()
+    return announce_type in ("new", "cross")
+
+
 def parse_date(date_str: str | None) -> datetime:
     """Parse a date string into datetime."""
     if not date_str:
         return datetime.now()
-    
+
     try:
         # Try parsing common formats
         for fmt in [
@@ -71,7 +85,7 @@ def parse_date(date_str: str | None) -> datetime:
 
 
 def fetch_feed(url: str, timeout: float = 30.0) -> list[Paper]:
-    """Fetch and parse an arxiv RSS feed."""
+    """Fetch and parse an arxiv RSS feed, filtering to only new/cross papers."""
     try:
         # Use httpx to fetch the feed content
         with httpx.Client(timeout=timeout) as client:
@@ -80,26 +94,31 @@ def fetch_feed(url: str, timeout: float = 30.0) -> list[Paper]:
             content = response.text
     except httpx.HTTPError as e:
         raise RuntimeError(f"Failed to fetch feed {url}: {e}") from e
-    
+
     feed = feedparser.parse(content)
     papers = []
-    
+
     for entry in feed.entries:
+        # Skip replacement papers - only keep new and cross-listed
+        if not is_new_or_cross(entry):
+            continue
+
+        title = entry.get("title", "No title")
         arxiv_id = parse_arxiv_id(entry.get("id", entry.get("link", "")))
-        
+
         # Get PDF link
         pdf_link = None
         for link in entry.get("links", []):
             if link.get("type") == "application/pdf":
                 pdf_link = link.get("href")
                 break
-        
+
         if not pdf_link:
             pdf_link = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
-        
+
         paper = Paper(
             id=arxiv_id,
-            title=entry.get("title", "No title"),
+            title=title,
             abstract=clean_abstract(entry.get("summary", "")),
             authors=parse_authors(entry),
             categories=parse_categories(entry),
@@ -109,7 +128,7 @@ def fetch_feed(url: str, timeout: float = 30.0) -> list[Paper]:
             pdf_link=pdf_link,
         )
         papers.append(paper)
-    
+
     return papers
 
 
@@ -117,7 +136,7 @@ def fetch_all_feeds(urls: list[str]) -> list[Paper]:
     """Fetch papers from multiple RSS feeds, deduplicating by ID."""
     seen_ids: set[str] = set()
     all_papers: list[Paper] = []
-    
+
     for url in urls:
         try:
             papers = fetch_feed(url)
@@ -128,8 +147,7 @@ def fetch_all_feeds(urls: list[str]) -> list[Paper]:
         except Exception as e:
             # Log but continue with other feeds
             print(f"Warning: Failed to fetch {url}: {e}")
-    
+
     # Sort by updated date, newest first
     all_papers.sort(key=lambda p: p.updated, reverse=True)
     return all_papers
-
