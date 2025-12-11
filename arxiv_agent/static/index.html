@@ -545,6 +545,121 @@
             to { transform: rotate(360deg); }
         }
 
+        /* Progress Steps */
+        .progress-container {
+            width: 100%;
+            max-width: 400px;
+            margin-top: 1.5rem;
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 1.5rem;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--gradient-1);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+            position: relative;
+        }
+
+        .progress-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.3),
+                transparent
+            );
+            animation: shimmer 1.5s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .progress-steps {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .progress-step {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            transition: all 0.3s ease;
+        }
+
+        .progress-step.active {
+            color: var(--text-primary);
+        }
+
+        .progress-step.completed {
+            color: var(--success);
+        }
+
+        .step-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            flex-shrink: 0;
+            border: 2px solid var(--border);
+            background: var(--bg-secondary);
+            transition: all 0.3s ease;
+        }
+
+        .progress-step.active .step-icon {
+            border-color: var(--accent);
+            background: var(--accent-dim);
+            animation: pulse 1.5s infinite;
+        }
+
+        .progress-step.completed .step-icon {
+            border-color: var(--success);
+            background: rgba(78, 205, 196, 0.2);
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .step-spinner {
+            width: 12px;
+            height: 12px;
+            border: 2px solid transparent;
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        .progress-status {
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            text-align: center;
+            min-height: 1.2em;
+        }
+
         /* Settings Panel */
         .settings-row {
             display: flex;
@@ -923,15 +1038,52 @@
             }
         }
 
-        async function fetchPapers() {
-            const container = document.getElementById('papers-container');
-            container.innerHTML = `
+        function renderProgress(step, status = '') {
+            const steps = [
+                { id: 1, label: 'Fetching RSS feeds' },
+                { id: 2, label: 'Parsing papers' },
+                { id: 3, label: 'Computing embeddings' },
+                { id: 4, label: 'Ranking by relevance' },
+            ];
+            
+            const progress = Math.min((step / steps.length) * 100, 100);
+            
+            return `
                 <div class="loading">
                     <div class="spinner"></div>
-                    <div>Fetching and analyzing papers...</div>
+                    <div style="font-size: 1.1rem; margin-bottom: 0.5rem;">Analyzing Papers</div>
+                    <div class="progress-container">
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" style="width: ${progress}%"></div>
+                        </div>
+                        <div class="progress-steps">
+                            ${steps.map(s => {
+                                const isCompleted = s.id < step;
+                                const isActive = s.id === step;
+                                const cls = isCompleted ? 'completed' : isActive ? 'active' : '';
+                                return `
+                                    <div class="progress-step ${cls}">
+                                        <div class="step-icon">
+                                            ${isCompleted ? '✓' : isActive ? '<div class="step-spinner"></div>' : s.id}
+                                        </div>
+                                        <span>${s.label}</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                        <div class="progress-status">${status}</div>
+                    </div>
                 </div>
             `;
+        }
 
+        async function fetchPapers() {
+            const container = document.getElementById('papers-container');
+            const numCategories = selectedCategories.size || 4;
+            
+            // Step 1: Fetching feeds
+            container.innerHTML = renderProgress(1, `Connecting to ${numCategories} arxiv feeds...`);
+            
             try {
                 const threshold = document.getElementById('threshold').value;
                 const maxResults = document.getElementById('max-results').value;
@@ -940,7 +1092,27 @@
                 let url = `/api/papers?threshold=${threshold}&max_results=${maxResults}`;
                 if (cats) url += `&categories=${encodeURIComponent(cats)}`;
                 
+                // Simulate progress steps while waiting for API
+                const progressInterval = setInterval(() => {
+                    const currentStep = parseInt(container.querySelector('.progress-bar-fill')?.style.width) || 0;
+                    if (currentStep < 75) {
+                        const step = currentStep < 25 ? 1 : currentStep < 50 ? 2 : 3;
+                        const messages = {
+                            1: 'Downloading latest papers...',
+                            2: 'Extracting paper metadata...',
+                            3: 'Loading embedding model...',
+                        };
+                        container.innerHTML = renderProgress(step + 1, messages[step] || '');
+                    }
+                }, 800);
+                
                 const response = await fetch(url);
+                clearInterval(progressInterval);
+                
+                // Step 4: Final ranking
+                container.innerHTML = renderProgress(4, 'Sorting by relevance score...');
+                await new Promise(r => setTimeout(r, 300)); // Brief pause to show final step
+                
                 const result = await response.json();
                 papers = result.papers;
                 totalInFeed = result.total_in_feed;
