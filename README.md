@@ -13,16 +13,25 @@ Your personal AI-powered research paper curator. Feed it arxiv RSS feeds, tell i
 
 ## Installation
 
+### Option 1: Run directly with uv (no install needed)
+
 ```bash
 cd arxiv_agent
-uv pip install -e .
-```
-
-Or run directly:
-
-```bash
 uv run python -m arxiv_agent.main
 ```
+
+`uv run` automatically reads dependencies from `pyproject.toml` and manages the environment for you.
+
+### Option 2: Install for `arxiv-agent` command
+
+```bash
+cd arxiv_agent
+uv venv
+uv pip install -e .
+arxiv-agent
+```
+
+This makes the `arxiv-agent` command available in your terminal.
 
 ## Quick Start
 
@@ -41,7 +50,7 @@ Then open http://127.0.0.1:8765 in your browser.
 ### Interactive CLI Mode
 
 ```bash
-arxiv-agent
+uv run python -m arxiv_agent.main
 ```
 
 On first run, you'll be prompted to add topics that describe your research interests. Examples:
@@ -107,13 +116,11 @@ You can select from 20+ categories in the web interface including:
 - Electrical Engineering: eess.AS, eess.IV, eess.SP
 - And more!
 
-You can also filter papers by date using the date picker.
-
 ## Data Storage
 
 All data is stored in `~/.arxiv_agent/`:
 - `anchors.json` - Your topics and saved papers
-- `embeddings_cache.json` - Cached embeddings for faster repeated runs
+- `embeddings_cache_<model>.json` - Cached embeddings per model for faster repeated runs
 
 ## Tips
 
