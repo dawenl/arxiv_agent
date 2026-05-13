@@ -53,16 +53,19 @@ class SemanticMatcher:
         return f"{prefix}_{text_hash}" if prefix else text_hash
     
     def embed_text(self, text: str, cache_key: str | None = None) -> np.ndarray:
-        """Get embedding for text, using cache if available."""
+        """Get embedding for text, using cache if available.
+
+        Updates the in-memory cache but does NOT persist to disk. Callers that
+        do batch work should call `_save_cache()` once at the end.
+        """
         if cache_key and cache_key in self._embedding_cache:
             return np.array(self._embedding_cache[cache_key])
-        
+
         embedding = self.model.encode(text, convert_to_numpy=True)
-        
+
         if cache_key:
             self._embedding_cache[cache_key] = embedding.tolist()
-            self._save_cache()
-        
+
         return embedding
     
     def embed_texts(self, texts: list[str]) -> np.ndarray:
@@ -103,11 +106,33 @@ class SemanticMatcher:
         
         return np.array(embeddings)
     
+    def _paper_text_and_key(self, paper: Paper) -> tuple[str, str]:
+        text = f"{paper.title}\n\n{paper.abstract}"
+        return text, self._get_cache_key(text, f"paper_{paper.id}")
+
     def get_paper_embedding(self, paper: Paper) -> np.ndarray:
         """Get embedding for a paper."""
-        text = f"{paper.title}\n\n{paper.abstract}"
-        cache_key = self._get_cache_key(text, f"paper_{paper.id}")
+        text, cache_key = self._paper_text_and_key(paper)
         return self.embed_text(text, cache_key)
+
+    def _prefill_paper_cache(self, papers: list[Paper]) -> bool:
+        """Batch-encode any papers not yet in the cache. Returns True if cache changed."""
+        texts: list[str] = []
+        keys: list[str] = []
+        seen: set[str] = set()
+        for paper in papers:
+            text, key = self._paper_text_and_key(paper)
+            if key in self._embedding_cache or key in seen:
+                continue
+            seen.add(key)
+            texts.append(text)
+            keys.append(key)
+        if not texts:
+            return False
+        embeddings = self.embed_texts(texts)
+        for key, emb in zip(keys, embeddings):
+            self._embedding_cache[key] = emb.tolist()
+        return True
     
     def score_paper(self, paper: Paper, anchor_embeddings: np.ndarray) -> float:
         """
@@ -153,9 +178,13 @@ class SemanticMatcher:
         threshold = threshold if threshold is not None else self.config.relevance_threshold
         max_results = max_results if max_results is not None else self.config.max_results
         
-        # Get anchor embeddings
+        # Get anchor embeddings (this already persists the cache if anchors were added)
         anchor_embeddings = self.get_anchor_embeddings(anchors)
-        
+
+        # Batch-encode any uncached papers in a single model.encode() call,
+        # so the score loop below only ever hits the in-memory cache.
+        cache_dirty = self._prefill_paper_cache(papers)
+
         # Score each paper
         scored_papers = []
         for paper in papers:
@@ -163,10 +192,13 @@ class SemanticMatcher:
             if score >= threshold:
                 paper.relevance_score = score
                 scored_papers.append(paper)
-        
+
+        if cache_dirty:
+            self._save_cache()
+
         # Sort by relevance score, highest first
         scored_papers.sort(key=lambda p: p.relevance_score, reverse=True)
-        
+
         return scored_papers[:max_results]
     
     def find_similar_papers(
@@ -177,20 +209,24 @@ class SemanticMatcher:
         max_results: int = 10,
     ) -> list[Paper]:
         """Find papers similar to a reference paper."""
+        cache_dirty = self._prefill_paper_cache([reference_paper] + papers)
         ref_embedding = self.get_paper_embedding(reference_paper)
-        
+
         scored_papers = []
         for paper in papers:
             if paper.id == reference_paper.id:
                 continue
-            
+
             paper_embedding = self.get_paper_embedding(paper)
             score = self.cosine_similarity(ref_embedding, paper_embedding)
-            
+
             if score >= threshold:
                 paper.relevance_score = score
                 scored_papers.append(paper)
-        
+
+        if cache_dirty:
+            self._save_cache()
+
         scored_papers.sort(key=lambda p: p.relevance_score, reverse=True)
         return scored_papers[:max_results]
 

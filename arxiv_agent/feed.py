@@ -1,12 +1,38 @@
 """RSS feed parser for arxiv papers."""
 
+import random
 import re
+import time
 from datetime import datetime
 
 import feedparser
 import httpx
 
 from .models import Paper
+
+USER_AGENT = "arxiv_agent/0.1 (+https://github.com/dawenl/arxiv_agent)"
+
+# arXiv asks for ≥3s between API requests; apply the same to RSS to be polite.
+INTER_REQUEST_DELAY = 3.0
+MAX_RETRIES = 3
+BACKOFF_BASE = 2.0
+BACKOFF_CAP = 30.0
+RETRY_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _retry_after_seconds(response: httpx.Response) -> float | None:
+    """Parse a Retry-After header in delta-seconds form. Returns None for HTTP-date."""
+    value = response.headers.get("retry-after")
+    if not value:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _backoff(attempt: int) -> float:
+    return min(BACKOFF_CAP, BACKOFF_BASE ** attempt) + random.uniform(0, 1)
 
 
 def parse_arxiv_id(link: str) -> str:
@@ -85,15 +111,41 @@ def parse_date(date_str: str | None) -> datetime:
 
 
 def fetch_feed(url: str, timeout: float = 30.0) -> list[Paper]:
-    """Fetch and parse an arxiv RSS feed, filtering to only new/cross papers."""
-    try:
-        # Use httpx to fetch the feed content
-        with httpx.Client(timeout=timeout) as client:
-            response = client.get(url)
-            response.raise_for_status()
+    """Fetch and parse an arxiv RSS feed, filtering to only new/cross papers.
+
+    Retries on transient HTTP errors (429, 5xx) with exponential backoff,
+    honoring Retry-After when present.
+    """
+    content: str | None = None
+    with httpx.Client(
+        timeout=timeout,
+        headers={"User-Agent": USER_AGENT},
+    ) as client:
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = client.get(url)
+            except httpx.HTTPError as e:
+                if attempt >= MAX_RETRIES:
+                    raise RuntimeError(
+                        f"Failed to fetch feed {url}: {type(e).__name__}: {e}"
+                    ) from e
+                time.sleep(_backoff(attempt))
+                continue
+
+            if response.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
+                wait = _retry_after_seconds(response) or _backoff(attempt)
+                time.sleep(wait)
+                continue
+
+            if response.status_code >= 400:
+                raise RuntimeError(
+                    f"Failed to fetch feed {url}: HTTP {response.status_code}"
+                )
+
             content = response.text
-    except httpx.HTTPError as e:
-        raise RuntimeError(f"Failed to fetch feed {url}: {e}") from e
+            break
+
+    assert content is not None  # loop always breaks or raises
 
     feed = feedparser.parse(content)
     papers = []
@@ -137,7 +189,9 @@ def fetch_all_feeds(urls: list[str]) -> list[Paper]:
     seen_ids: set[str] = set()
     all_papers: list[Paper] = []
 
-    for url in urls:
+    for i, url in enumerate(urls):
+        if i > 0:
+            time.sleep(INTER_REQUEST_DELAY)
         try:
             papers = fetch_feed(url)
             for paper in papers:
