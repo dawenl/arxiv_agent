@@ -15,6 +15,22 @@ if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
 
 
+def _hf_model_is_cached(model_name: str) -> bool:
+    """Return True if the embedding model is already in the local HF cache.
+
+    Checked via the filesystem (without importing huggingface_hub) so the
+    caller can decide whether to enable offline mode before that import.
+    """
+    # Bare names like "all-MiniLM-L6-v2" live under the sentence-transformers org.
+    repo = model_name if "/" in model_name else f"sentence-transformers/{model_name}"
+    cache_dir = os.environ.get("HF_HUB_CACHE") or os.path.join(
+        os.environ.get("HF_HOME") or os.path.expanduser("~/.cache/huggingface"),
+        "hub",
+    )
+    snapshots = Path(cache_dir) / f"models--{repo.replace('/', '--')}" / "snapshots"
+    return snapshots.is_dir() and any(snapshots.iterdir())
+
+
 class SemanticMatcher:
     """Matches papers to anchors using semantic similarity."""
     
@@ -41,7 +57,15 @@ class SemanticMatcher:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(self.config.embedding_model)
+            # If the model is already in the HF cache, load it purely from local
+            # files. This skips the unauthenticated "check for updates" request
+            # to the Hub on every cold start (which prints a HF_TOKEN warning and
+            # adds a network round-trip). First-time downloads and switching to a
+            # new model still work, since we only do this when it's cached.
+            self._model = SentenceTransformer(
+                self.config.embedding_model,
+                local_files_only=_hf_model_is_cached(self.config.embedding_model),
+            )
         return self._model
     
     def _load_cache(self) -> None:
