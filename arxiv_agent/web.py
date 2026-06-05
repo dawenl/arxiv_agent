@@ -10,16 +10,22 @@ from pydantic import BaseModel
 
 from .anchors import AnchorStore
 from .feed import fetch_all_feeds
-from .matcher import SemanticMatcher
+from .matcher import run_matcher_in_subprocess
 from .models import ARXIV_CATEGORIES, EMBEDDING_MODELS, Config, Paper
 
 # Initialize app
 app = FastAPI(title="arxiv Agent", description="Your personal research paper curator")
 
 # Global state
+#
+# Note: we deliberately do NOT keep a resident matcher/model here. The embedding
+# model pulls in torch (~400MB resident) and Python cannot unload a C extension
+# once imported, so a long-lived server that loaded it would stay parked at that
+# footprint forever. Instead each fetch runs embedding in a short-lived
+# subprocess (see run_matcher_in_subprocess) that exits and releases the memory,
+# keeping this server process small (~66MB) while idle.
 _config: Config | None = None
 _store: AnchorStore | None = None
-_matcher: SemanticMatcher | None = None
 _cached_papers: list[Paper] = []
 
 
@@ -35,13 +41,6 @@ def get_store() -> AnchorStore:
     if _store is None:
         _store = AnchorStore(get_config())
     return _store
-
-
-def get_matcher() -> SemanticMatcher:
-    global _matcher
-    if _matcher is None:
-        _matcher = SemanticMatcher(get_config())
-    return _matcher
 
 
 # Request/Response models
@@ -178,27 +177,29 @@ async def fetch_papers(
     
     config = get_config()
     store = get_store()
-    matcher = get_matcher()
-    
+
     # Use provided categories or default
     if categories:
         cat_list = [c.strip() for c in categories.split(",") if c.strip()]
         feeds = [f"https://rss.arxiv.org/rss/{cat}" for cat in cat_list]
     else:
         feeds = config.feeds
-    
+
     # Fetch all papers
     all_papers = fetch_all_feeds(feeds)
     total_in_feed = len(all_papers)
-    
-    # Filter by relevance if we have anchors
+
+    # Filter by relevance if we have anchors. Embedding runs in a short-lived
+    # subprocess so this server process never imports torch.
     anchors = store.anchors
     if anchors:
-        filtered = matcher.filter_papers(
+        filtered = run_matcher_in_subprocess(
+            config,
+            "filter_papers",
             all_papers,
             anchors,
-            threshold=threshold or config.relevance_threshold,
-            max_results=max_results or config.max_results,
+            threshold or config.relevance_threshold,
+            max_results or config.max_results,
         )
     else:
         # No anchors - return all papers (limited)
@@ -269,9 +270,8 @@ async def get_settings():
 @app.put("/api/settings")
 async def update_settings(settings: SettingsUpdate):
     """Update settings."""
-    global _matcher
     config = get_config()
-    
+
     if settings.threshold is not None:
         config.relevance_threshold = settings.threshold
     if settings.max_results is not None:
@@ -283,9 +283,9 @@ async def update_settings(settings: SettingsUpdate):
         if settings.embedding_model not in EMBEDDING_MODELS:
             raise HTTPException(status_code=400, detail=f"Invalid embedding model: {settings.embedding_model}")
         config.embedding_model = settings.embedding_model
-        # Reset matcher to force model reload
-        _matcher = None
-    
+        # No resident matcher to reset: the next fetch spawns a fresh subprocess
+        # that loads whichever model the config now points at.
+
     return {"status": "ok"}
 
 

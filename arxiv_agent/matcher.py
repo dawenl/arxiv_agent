@@ -1,13 +1,18 @@
 """Semantic similarity matching using embeddings."""
 
+from __future__ import annotations
+
 import json
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from .models import Anchor, Config, Paper
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 
 class SemanticMatcher:
@@ -25,8 +30,17 @@ class SemanticMatcher:
     
     @property
     def model(self) -> SentenceTransformer:
-        """Lazy-load the embedding model."""
+        """Lazy-load the embedding model.
+
+        The ``sentence_transformers`` import lives here (not at module top) so
+        that merely importing this module does not pull in torch. Only code
+        paths that actually embed text pay that ~400MB cost. The web server
+        relies on this to stay torch-free and run embedding in a subprocess
+        (see ``run_matcher_in_subprocess``).
+        """
         if self._model is None:
+            from sentence_transformers import SentenceTransformer
+
             self._model = SentenceTransformer(self.config.embedding_model)
         return self._model
     
@@ -229,4 +243,68 @@ class SemanticMatcher:
 
         scored_papers.sort(key=lambda p: p.relevance_score, reverse=True)
         return scored_papers[:max_results]
+
+
+def _subprocess_entry(queue, config: Config, method: str, payload: tuple) -> None:
+    """Run a SemanticMatcher method inside a freshly spawned child process.
+
+    This is the target of the spawned process: it constructs a matcher (which
+    imports torch and loads the model on first use), does the work, ships the
+    result back over the queue, and then the process exits — at which point the
+    OS reclaims all of torch's memory.
+    """
+    try:
+        matcher = SemanticMatcher(config)
+        result = getattr(matcher, method)(*payload)
+        queue.put(("ok", result))
+    except Exception:  # pragma: no cover - surfaced to parent below
+        import traceback
+
+        queue.put(("error", traceback.format_exc()))
+
+
+def run_matcher_in_subprocess(config: Config, method: str, *payload):
+    """Run a ``SemanticMatcher`` method in a short-lived subprocess.
+
+    The long-lived caller (e.g. the web server) never imports torch and stays
+    small (~66MB). Each call spawns a child that loads the model, does the
+    embedding/scoring, returns the result, and exits, fully releasing memory.
+
+    Args:
+        config: agent configuration (must be picklable).
+        method: name of the SemanticMatcher method to call, e.g. "filter_papers".
+        *payload: positional arguments forwarded to that method (must be
+            picklable; Paper/Anchor dataclasses are).
+
+    Returns:
+        Whatever the underlying method returns (e.g. a list of scored Papers).
+    """
+    import multiprocessing
+    import queue as _queue
+
+    ctx = multiprocessing.get_context("spawn")
+    result_queue = ctx.Queue()
+    proc = ctx.Process(
+        target=_subprocess_entry, args=(result_queue, config, method, payload)
+    )
+    proc.start()
+
+    # Wait for a result, but don't hang forever if the child dies (e.g. OOM kill
+    # or segfault) before it can report back.
+    while True:
+        try:
+            status, result = result_queue.get(timeout=2)
+            break
+        except _queue.Empty:
+            if not proc.is_alive():
+                proc.join()
+                raise RuntimeError(
+                    f"Embedding subprocess exited (code {proc.exitcode}) "
+                    "before returning a result"
+                )
+
+    proc.join()
+    if status == "error":
+        raise RuntimeError(f"Embedding subprocess failed:\n{result}")
+    return result
 
